@@ -1,66 +1,61 @@
 package training.employees;
 
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
+import javax.transaction.Transactional;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class EmployeesService {
 
-    private AtomicLong id = new AtomicLong();
+    private DataEmployeesRepository repository;
 
     private ModelMapper modelMapper;
 
-    private List<Employee> employees = Collections.synchronizedList(new ArrayList<>(List.of(
-            new Employee(id.incrementAndGet(), "John Doe"),
-            new Employee(id.incrementAndGet(), "Jane Doe"))));
-
-    public EmployeesService(ModelMapper modelMapper) {
+    public EmployeesService(DataEmployeesRepository repository, ModelMapper modelMapper) {
+        this.repository = repository;
         this.modelMapper = modelMapper;
     }
 
+    @Transactional
     public EmployeeDto createEmployee(CreateEmployeeCommand command) {
-        Employee employee = new Employee(id.incrementAndGet(), command.getName());
-        employees.add(employee);
+        var employee = repository.save(new Employee(command.getName()));
         return modelMapper.map(employee, EmployeeDto.class);
     }
 
     public List<EmployeeDto> listEmployees(String prefix) {
-        return employees.stream()
-                .filter(e -> prefix == null || e.getName().toLowerCase().startsWith(prefix.toLowerCase()))
+
+        log.info("Alkalmazottak listazasa");
+        log.debug("A parameter: {}", prefix);
+
+        return repository.findAll().stream()
                 .map(e -> modelMapper.map(e, EmployeeDto.class))
                 .collect(Collectors.toList());
     }
 
     public EmployeeDto findEmployeeById(long id) {
-        return employees.stream().filter(e -> id == e.getId()).findFirst()
-                .map(e -> modelMapper.map(e, EmployeeDto.class))
-                .orElseThrow(() -> new IllegalArgumentException("Cannot find employee with id " + id));
+        return modelMapper.map(repository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Employee not found")),
+                EmployeeDto.class);
     }
 
+    @Transactional
     public EmployeeDto updateEmployee(long id, UpdateEmployeeCommand command) {
-        Employee employee = employees.stream().filter(e -> id == e.getId()).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Cannot find employee with id " + id));
+        var employee = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Employee not found"));
         employee.setName(command.getName());
         return modelMapper.map(employee, EmployeeDto.class);
     }
 
     public void deleteEmployee(long id) {
-        Optional<Employee> employeeToDelete = employees.stream().filter(e -> id == e.getId()).findFirst();
-        if (employeeToDelete.isPresent()) {
-            employees.remove(employeeToDelete.get());
-        }
-        else {
-            throw new IllegalArgumentException("Cannot find employee with id " + id);
-        }
+        repository.deleteById(id);
     }
 
     public void deleteAll() {
-        id.set(0);
-        employees.clear();
+        repository.deleteAll();
     }
 
 }
